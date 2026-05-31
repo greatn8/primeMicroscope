@@ -1,0 +1,27 @@
+# Compiled binary
+prime2
+
+# Generated images and CSV outputs
+*.bmp
+*.csv
+iter_*.bmp
+iter_*.csv
+all_iterations_summary.csv
+
+# Runtime logs
+run_stdout.txt
+run_time.txt
+prime_report_output.txt
+deep_launcher.log
+
+# Generated exploration folders
+deep_quad_results_*/
+auto_explore_*/
+zoom_*/
+zoom_quad_*/
+test_chunk/
+chunk_*/
+
+# Python cache
+__pycache__/
+*.pyc
