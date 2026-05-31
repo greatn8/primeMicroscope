@@ -375,20 +375,21 @@ def confirmation_check(target: Candidate,
 
     # Offset constellations need stricter proof because we test many of them.
     if target.kind == "offset":
+        # Best evidence: the exact same pattern appears strongly in 3+ separate broad chunks.
         if len(exact_broad) >= 3:
             return True, f"VERY STRONG OFFSET CANDIDATE: same exact pattern appeared in {len(exact_broad)} broad chunks. {status}"
 
+        # Good evidence: appears in multiple broad chunks and survives zooming.
         if len(exact_broad) >= 2 and len(exact_zoom) >= 2:
             return True, f"STRONG OFFSET CANDIDATE: repeated broadly and survived zoom multiple times. {status}"
 
-        if target.top_count >= 10 and len(exact_zoom) >= 2:
-            return True, f"STRONG OFFSET CANDIDATE: top_count >= 10 and exact zoom survival. {status}"
+        # Good evidence: extremely high top_count and repeated exact zoom survival.
+        if target.top_count >= 10 and len(exact_zoom) >= 3:
+            return True, f"STRONG OFFSET CANDIDATE: top_count >= 10 and repeated exact zoom survival. {status}"
 
-        if len(exact_zoom) >= 4:
-            return True, f"STRONG OFFSET CANDIDATE: exact pattern survived many zoom checks. {status}"
-
-        if len(exact_zoom) >= 1 and len(related_zoom) >= 100 and target.top_count >= 9:
-            return True, f"STRONG OFFSET FAMILY: exact survivor plus large related family. {status}"
+        # Good family evidence: exact pattern survives many zoom checks AND related family is large.
+        if len(exact_zoom) >= 5 and len(related_zoom) >= 150:
+            return True, f"STRONG OFFSET FAMILY: many exact zoom survivors plus large related family. {status}"
 
     return False, f"not confirmed yet: {status}"
 

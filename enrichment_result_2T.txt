@@ -1,0 +1,18 @@
+2-trillion holdout run enrichment result
+
+Folder: auto_explore_20260531_162505
+
+BROAD
+total: 1509000
+quad_0_6_6a_6b: 38280
+percentage: 2.536779324055666
+
+STRONG
+total: 12
+quad_0_6_6a_6b: 12
+percentage: 100.0
+
+enrichment factor: 39.42006269592476
+
+Interpretation:
+Under the current fixed scoring criteria, the quad_0_6_6a_6b family represented only about 2.54% of broad candidates but accounted for 100% of strong surviving candidates.
