@@ -362,31 +362,33 @@ def confirmation_check(target: Candidate,
         f"related_zoom={len(related_zoom)}"
     )
 
+    # Gap motifs are stronger because they are consecutive-prime structures.
     if target.kind == "gap":
-        if target.top_count >= 5:
-            return True, f"STRONG GAP CANDIDATE: top_count >= 5. {status}"
+        if len(exact_broad) >= 2 and len(exact_zoom) >= 1 and target.top_count >= 4:
+            return True, f"VERY STRONG GAP CANDIDATE: repeated broadly and survived zoom. {status}"
 
-        if target.top_count >= 4 and len(exact_zoom) >= 1:
-            return True, f"STRONG GAP CANDIDATE: exact gap motif survived zoom. {status}"
+        if len(exact_zoom) >= 2 and target.top_count >= 4:
+            return True, f"STRONG GAP CANDIDATE: exact gap motif survived multiple zooms. {status}"
 
-        if target.top_count >= 4 and len(related_zoom) >= 2:
-            return True, f"STRONG GAP FAMILY: related gap motifs survived zoom. {status}"
+        if target.top_count >= 6 and target.max_z >= 15 and len(exact_zoom) >= 1:
+            return True, f"STRONG GAP CANDIDATE: high count gap motif survived zoom. {status}"
 
+    # Offset constellations need stricter proof because we test many of them.
     if target.kind == "offset":
-        if target.top_count >= 8:
-            return True, f"STRONG OFFSET CANDIDATE: top_count >= 8. {status}"
-
         if len(exact_broad) >= 3:
-            return True, f"STRONG OFFSET CANDIDATE: same exact pattern appeared in {len(exact_broad)} broad chunks. {status}"
+            return True, f"VERY STRONG OFFSET CANDIDATE: same exact pattern appeared in {len(exact_broad)} broad chunks. {status}"
 
-        if len(exact_broad) >= 2 and len(exact_zoom) >= 1:
-            return True, f"STRONG OFFSET CANDIDATE: repeated broadly and survived zoom. {status}"
+        if len(exact_broad) >= 2 and len(exact_zoom) >= 2:
+            return True, f"STRONG OFFSET CANDIDATE: repeated broadly and survived zoom multiple times. {status}"
 
-        if len(exact_zoom) >= 2:
-            return True, f"STRONG OFFSET CANDIDATE: exact pattern survived multiple zooms. {status}"
+        if target.top_count >= 10 and len(exact_zoom) >= 2:
+            return True, f"STRONG OFFSET CANDIDATE: top_count >= 10 and exact zoom survival. {status}"
 
-        if len(related_zoom) >= 4:
-            return True, f"STRONG OFFSET FAMILY: related quad family repeatedly survived zoom. {status}"
+        if len(exact_zoom) >= 4:
+            return True, f"STRONG OFFSET CANDIDATE: exact pattern survived many zoom checks. {status}"
+
+        if len(exact_zoom) >= 1 and len(related_zoom) >= 100 and target.top_count >= 9:
+            return True, f"STRONG OFFSET FAMILY: exact survivor plus large related family. {status}"
 
     return False, f"not confirmed yet: {status}"
 

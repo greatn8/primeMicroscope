@@ -209,7 +209,7 @@ void add_pattern(PatternBank &bank, const std::string &name,
     bank.max_offsets.push_back(max_unit);
 }
 
-const int MAX_PATTERN_LENSES = 100000;
+const int MAX_PATTERN_LENSES = 50000;
 
 bool is_admissible_pattern(const std::vector<int> &offsets)
 {
@@ -522,6 +522,65 @@ std::vector<RGB> winner_family_image(const PatternBank &bank,
     return img;
 }
 
+
+double percentile_value(const std::vector<double> &values,
+                        int count,
+                        double percentile)
+{
+    std::vector<double> filtered;
+    filtered.reserve(count);
+
+    for (int i = 0; i < count; i++) {
+        filtered.push_back(values[i]);
+    }
+
+    if (filtered.empty()) {
+        return 0.0;
+    }
+
+    std::sort(filtered.begin(), filtered.end());
+
+    double pos = percentile * (double)(filtered.size() - 1);
+    int idx = (int)std::round(pos);
+
+    if (idx < 0) idx = 0;
+    if (idx >= (int)filtered.size()) idx = (int)filtered.size() - 1;
+
+    return filtered[idx];
+}
+
+void add_pixel_max(std::vector<RGB> &img,
+                   int width,
+                   int height,
+                   int x,
+                   int y,
+                   RGB colour,
+                   double strength)
+{
+    if (x < 0 || x >= width || y < 0 || y >= height) {
+        return;
+    }
+
+    strength = clamp01(strength);
+
+    RGB &old = img[y * width + x];
+
+    old.r = (unsigned char)std::max(
+        (int)old.r,
+        (int)std::round((double)colour.r * strength)
+    );
+
+    old.g = (unsigned char)std::max(
+        (int)old.g,
+        (int)std::round((double)colour.g * strength)
+    );
+
+    old.b = (unsigned char)std::max(
+        (int)old.b,
+        (int)std::round((double)colour.b * strength)
+    );
+}
+
 std::vector<RGB> spiral_metric_image(const std::vector<double> &metric,
                                      int tile_count,
                                      int size)
@@ -532,85 +591,65 @@ std::vector<RGB> spiral_metric_image(const std::vector<double> &metric,
         return img;
     }
 
-    double maxv = 0.0;
+    double p80 = percentile_value(metric, tile_count, 0.80);
+    double p95 = percentile_value(metric, tile_count, 0.95);
+    double p995 = percentile_value(metric, tile_count, 0.995);
 
-    for (int i = 0; i < tile_count; i++) {
-        if (metric[i] > maxv) {
-            maxv = metric[i];
-        }
-    }
-
-    if (maxv <= 0.0) {
-        maxv = 1.0;
+    if (p995 <= p80) {
+        p995 = p80 + 1.0;
     }
 
     double cx = (size - 1) / 2.0;
     double cy = (size - 1) / 2.0;
     double maxr = size * 0.47;
 
-    double turns = 32.0;
+    // Golden angle spreads points evenly and reduces fake N/E/S/W artefacts.
+    double golden_angle = PI_VALUE * (3.0 - std::sqrt(5.0));
 
-    // Increase this if you want larger dots.
     int dot_radius = 2;
 
-    // Anything below this relative strength becomes very dim.
-    double threshold = 0.08;
-
     for (int t = 0; t < tile_count; t++) {
-        double u = ((double) t + 0.5) / (double) tile_count;
+        double v = metric[t];
 
+        // Hide weak background. This makes the image more diagnostic.
+        if (v < p80) {
+            continue;
+        }
+
+        double u = ((double)t + 0.5) / (double)tile_count;
         double r = maxr * std::sqrt(u);
-        double theta = 2.0 * PI_VALUE * turns * u;
+        double theta = (double)t * golden_angle;
 
-        int x0 = (int) std::round(cx + r * std::cos(theta));
-        int y0 = (int) std::round(cy + r * std::sin(theta));
+        int x0 = (int)std::round(cx + r * std::cos(theta));
+        int y0 = (int)std::round(cy + r * std::sin(theta));
 
-        double raw = metric[t] / maxv;
-        raw = clamp01(raw);
-
-        // Log scaling makes mid-strength novelty easier to see.
-        double strength = std::log1p(20.0 * raw) / std::log1p(20.0);
+        double strength = (v - p80) / (p995 - p80);
         strength = clamp01(strength);
 
-        if (strength < threshold) {
-            strength *= 0.20;
-        }
+        // Make only the strongest values visually pop.
+        strength = std::pow(strength, 0.55);
 
         RGB colour = heat_color(strength);
 
         for (int dy = -dot_radius; dy <= dot_radius; dy++) {
             for (int dx = -dot_radius; dx <= dot_radius; dx++) {
-                int x = x0 + dx;
-                int y = y0 + dy;
-
-                if (x < 0 || x >= size || y < 0 || y >= size) {
-                    continue;
-                }
-
-                double dist = std::sqrt((double) (dx * dx + dy * dy));
+                double dist = std::sqrt((double)(dx * dx + dy * dy));
 
                 if (dist > dot_radius) {
                     continue;
                 }
 
-                double fade = 1.0 - (dist / (double) (dot_radius + 1));
+                double fade = 1.0 - (dist / (double)(dot_radius + 1));
                 fade = clamp01(fade);
 
-                RGB &old = img[y * size + x];
-
-                old.r = (unsigned char) std::min(
-                    255,
-                    (int) old.r + (int) std::round(colour.r * fade)
-                );
-
-                old.g = (unsigned char) std::min(
-                    255,
-                    (int) old.g + (int) std::round(colour.g * fade)
-                );
-
-                old.b = (unsigned char) std::min(
-                    255,
-                    (int) old.b + (int) std::round(colour.b * fade)
+                add_pixel_max(
+                    img,
+                    size,
+                    size,
+                    x0 + dx,
+                    y0 + dy,
+                    colour,
+                    strength * fade
                 );
             }
         }
@@ -618,7 +657,6 @@ std::vector<RGB> spiral_metric_image(const std::vector<double> &metric,
 
     return img;
 }
-
 
 std::vector<RGB> novelty_wheel_image(const std::vector<double> &novelty,
                                      uint64_t base_start,
@@ -771,73 +809,71 @@ std::vector<RGB> spiral_winner_family_image(const PatternBank &bank,
         return img;
     }
 
+    double p90 = percentile_value(winner_z, tile_count, 0.90);
+    double p99 = percentile_value(winner_z, tile_count, 0.99);
+
+    if (p99 <= p90) {
+        p99 = p90 + 1.0;
+    }
+
     double cx = (size - 1) / 2.0;
     double cy = (size - 1) / 2.0;
     double maxr = size * 0.47;
 
-    double turns = 32.0;
-    double z_cap = 16.0;
+    double golden_angle = PI_VALUE * (3.0 - std::sqrt(5.0));
 
     int dot_radius = 2;
 
     for (int t = 0; t < tile_count; t++) {
-        double u = ((double) t + 0.5) / (double) tile_count;
-
-        double r = maxr * std::sqrt(u);
-        double theta = 2.0 * PI_VALUE * turns * u;
-
-        int x0 = (int) std::round(cx + r * std::cos(theta));
-        int y0 = (int) std::round(cy + r * std::sin(theta));
+        if (winner_z[t] < p90) {
+            continue;
+        }
 
         int pattern_id = winner[t];
-        int family = pattern_family_id(bank.names[pattern_id]);
 
+        if (pattern_id < 0 || pattern_id >= (int)bank.names.size()) {
+            continue;
+        }
+
+        double u = ((double)t + 0.5) / (double)tile_count;
+        double r = maxr * std::sqrt(u);
+        double theta = (double)t * golden_angle;
+
+        int x0 = (int)std::round(cx + r * std::cos(theta));
+        int y0 = (int)std::round(cy + r * std::sin(theta));
+
+        int family = pattern_family_id(bank.names[pattern_id]);
         RGB base = family_color(family);
 
-        double strength = std::log1p(winner_z[t]) / std::log1p(z_cap);
+        double strength = (winner_z[t] - p90) / (p99 - p90);
         strength = clamp01(strength);
-
-        double brightness = 0.10 + 0.90 * strength;
+        strength = std::pow(strength, 0.55);
 
         RGB colour = {
-            (unsigned char) std::round(base.r * brightness),
-            (unsigned char) std::round(base.g * brightness),
-            (unsigned char) std::round(base.b * brightness)
+            (unsigned char)std::round((double)base.r * (0.25 + 0.75 * strength)),
+            (unsigned char)std::round((double)base.g * (0.25 + 0.75 * strength)),
+            (unsigned char)std::round((double)base.b * (0.25 + 0.75 * strength))
         };
 
         for (int dy = -dot_radius; dy <= dot_radius; dy++) {
             for (int dx = -dot_radius; dx <= dot_radius; dx++) {
-                int x = x0 + dx;
-                int y = y0 + dy;
-
-                if (x < 0 || x >= size || y < 0 || y >= size) {
-                    continue;
-                }
-
-                double dist = std::sqrt((double) (dx * dx + dy * dy));
+                double dist = std::sqrt((double)(dx * dx + dy * dy));
 
                 if (dist > dot_radius) {
                     continue;
                 }
 
-                double fade = 1.0 - (dist / (double) (dot_radius + 1));
+                double fade = 1.0 - (dist / (double)(dot_radius + 1));
                 fade = clamp01(fade);
 
-                RGB &old = img[y * size + x];
-
-                old.r = (unsigned char) std::min(
-                    255,
-                    (int) old.r + (int) std::round(colour.r * fade)
-                );
-
-                old.g = (unsigned char) std::min(
-                    255,
-                    (int) old.g + (int) std::round(colour.g * fade)
-                );
-
-                old.b = (unsigned char) std::min(
-                    255,
-                    (int) old.b + (int) std::round(colour.b * fade)
+                add_pixel_max(
+                    img,
+                    size,
+                    size,
+                    x0 + dx,
+                    y0 + dy,
+                    colour,
+                    strength * fade
                 );
             }
         }
