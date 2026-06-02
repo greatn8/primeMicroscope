@@ -2,7 +2,7 @@
 
 A CUDA-based experimental prime-pattern search and validation system for exploring local prime constellations at trillion-scale integer ranges.
 
-Prime Microscope scans large ranges of integers, detects unusual local prime-offset structures, visualises prime-pattern density, automatically zooms into promising regions, and validates candidate patterns using independent counting and theory-based comparison.
+Prime Microscope scans large ranges of integers, detects unusual local prime-offset structures, visualises prime-pattern density, automatically zooms into promising regions, validates candidate patterns using independent counting, and compares observed results against Hardy–Littlewood-style expected behaviour.
 
 The project combines:
 
@@ -12,8 +12,10 @@ The project combines:
 * Automated broad-scan and zoom-search workflows
 * Statistical candidate ranking
 * Prime-cluster generation
+* Actual/expected anomaly hunting
 * Hardy–Littlewood-style expected-count comparison
 * Reproducible CSV-based experiment logging
+* Pattern-space visualisation for anomaly detection
 
 ---
 
@@ -373,6 +375,22 @@ This indicates that the GPU search is detecting real prime-tuple structure rathe
 
 ---
 
+### 4. Next-stage anomaly target
+
+The next stage of the project is to search for exact patterns with sustained:
+
+```text
+actual / expected >= 1.2
+```
+
+The goal is to find patterns that do not merely have high raw counts, but produce more prime constellations than the Hardy–Littlewood-style estimate predicts.
+
+A pattern with `A/E` near 1.0 is behaving close to theoretical expectation.
+
+A pattern with sustained `A/E >= 1.2` across independent ranges would be a stronger anomaly candidate.
+
+---
+
 ## Project architecture
 
 The project currently consists of several main components.
@@ -449,6 +467,107 @@ singular-series approximation
 
 ---
 
+### `ae_hunter.py`
+
+Automated actual/expected anomaly hunter.
+
+This script tests selected patterns or generated `quad_0_6_6a_6b` family members across one or more ranges, computes expected counts using the singular-series approximation, and records the actual/expected ratio.
+
+Its main target is:
+
+```text
+A/E >= 1.2
+```
+
+where:
+
+```text
+A/E = actual_hits / expected_hits
+```
+
+Responsibilities:
+
+* Test candidate patterns over fixed ranges.
+* Run the exact prime-cluster generator.
+* Compute singular-series expected counts.
+* Calculate actual/expected ratios.
+* Save all results to a CSV file.
+* Save special hits where `A/E` exceeds the chosen threshold.
+* Continue searching after finding hits instead of stopping.
+
+Example output files:
+
+```text
+ae_hunter_results.csv
+ae_hunter_hits.csv
+```
+
+`ae_hunter_results.csv` stores all tested results.
+
+`ae_hunter_hits.csv` stores only patterns and ranges where the A/E threshold is reached.
+
+---
+
+### `ae_visuals.py`
+
+Pattern-space visualisation script.
+
+The original bitmap outputs from the CUDA scanner can be difficult to interpret because prime-density images often appear noisy or sparse. `ae_visuals.py` creates more useful research-oriented visualisations based on actual/expected ratios and pattern-space structure.
+
+Generated outputs include:
+
+```text
+ae_top_patterns.csv
+ae_scatter_ae_vs_singular.png
+ae_timeline_top_patterns.png
+ae_pattern_space_ae.png
+ae_pattern_space_hits_per_million.png
+```
+
+These graphics are designed to answer more useful questions:
+
+* Which patterns are above theory?
+* Which patterns are simply high-yield because theory predicts them to be?
+* Which patterns stay strong across multiple ranges?
+* Which areas of `quad_0_6_6a_6b` pattern space are most productive?
+* Which patterns are worth deeper validation?
+
+---
+
+## Visualisation strategy
+
+The first version of the project produced bitmap images from prime-pattern scans. These images were useful for confirming that the GPU output was being generated, but they were not always useful for detecting meaningful anomalies. At low resolution they could lose structure, while at high resolution they often appeared as random-looking sparse dots.
+
+The improved visual strategy focuses on **pattern-space** rather than only **number-space**.
+
+Instead of asking:
+
+```text
+Where are the prime pixels?
+```
+
+the new visualisations ask:
+
+```text
+Which patterns are unusually productive?
+Which patterns beat expected counts?
+Which patterns are stable across independent ranges?
+```
+
+The most useful visual targets are now:
+
+```text
+actual / expected ratio
+hits per million
+singular-series score
+pattern-space coordinates
+range-by-range stability
+```
+
+This makes the graphics more directly connected to the current research goal: finding sustained A/E anomalies.
+
+---
+
 ## Example build instructions
 
 Example direct CUDA run:
@@ -509,6 +628,114 @@ python3 theory_compare_patterns.py \
   --summary top4_10M_summary.csv \
   --prime-limit 200000
 ```
+
+---
+
+## Example A/E anomaly hunting
+
+Create a pattern file:
+
+```bash
+cat > ae_patterns.txt <<'EOF'
+quad_0_6_126_336
+quad_0_6_96_210
+quad_0_6_66_360
+quad_0_6_120_336
+quad_0_6_66_150
+quad_0_6_156_300
+quad_0_6_90_330
+quad_0_6_126_270
+quad_0_6_132_336
+quad_0_6_66_90
+quad_0_6_132_210
+quad_0_6_90_120
+quad_0_6_126_360
+quad_0_6_126_246
+quad_0_6_132_252
+quad_0_6_84_90
+EOF
+```
+
+Run the A/E hunter:
+
+```bash
+python3 ae_hunter.py \
+  --patterns-file ae_patterns.txt \
+  --starts 1000000000000,2000000000000,5000000000000,10000000000000 \
+  --limit 10000000 \
+  --threshold 1.2 \
+  --results-csv ae_hunter_results.csv \
+  --hits-csv ae_hunter_hits.csv
+```
+
+This tests each pattern across the selected ranges. If a pattern reaches:
+
+```text
+A/E >= 1.2
+```
+
+the result is saved to:
+
+```text
+ae_hunter_hits.csv
+```
+
+The script keeps going after finding a hit.
+
+---
+
+## Example long-running A/E search
+
+To continue searching across many independent trillion-scale ranges:
+
+```bash
+python3 ae_hunter.py \
+  --patterns-file ae_patterns.txt \
+  --starts 1000000000000 \
+  --iterations 50 \
+  --start-step 1000000000000 \
+  --limit 10000000 \
+  --threshold 1.2 \
+  --results-csv ae_hunter_long_results.csv \
+  --hits-csv ae_hunter_long_hits.csv
+```
+
+This tests:
+
+```text
+1T
+2T
+3T
+4T
+...
+50T
+```
+
+for each pattern in `ae_patterns.txt`.
+
+---
+
+## Example A/E visualisation
+
+After running the hunter:
+
+```bash
+python3 ae_visuals.py \
+  --results ae_hunter_results.csv \
+  --prefix ae
+```
+
+Expected outputs:
+
+```text
+ae_top_patterns.csv
+ae_scatter_ae_vs_singular.png
+ae_timeline_top_patterns.png
+ae_pattern_space_ae.png
+ae_pattern_space_hits_per_million.png
+```
+
+These outputs are more useful than the early raw bitmap images because they show pattern-level structure rather than only sparse prime-position dots.
 
 ---
 
@@ -580,34 +807,15 @@ This project demonstrates the ability to:
 * Design a multi-stage computational experiment.
 * Automate broad search, zooming, filtering, and validation.
 * Develop custom statistical and theory-comparison tooling.
+* Build an automatic anomaly-search loop.
+* Create visualisations that are aligned with the research objective.
 * Use empirical results to refine research direction.
 * Avoid overclaiming by comparing results against theoretical expectations.
 
 The strongest technical achievement is the complete pipeline:
 
 ```text
-GPU scan → candidate detection → holdout validation → generator testing → theory comparison
-```
-
----
-
-## Future work
-
-Planned or possible extensions:
-
-1. Compare `quad_0_6_6a_6b` against other admissible prime-offset families.
-2. Implement a dedicated CUDA generator for only `quad_0_6_6a_6b`.
-3. Search for exact patterns with sustained actual/theory ratio above 1.2.
-4. Improve the singular-series approximation.
-5. Add formal statistical tests.
-6. Build visual reports from the heatmaps and spiral outputs.
-8. Package reproducible experiment scripts.
-9. Add configuration files for fixed experiment runs.
-
-
-
----
+GPU scan → candidate detection → holdout validation → generator testing → theory comparison → A/E anomaly hunting → pattern-space visualisation
 
 ## Author
 Nathan Shorter
-
